@@ -430,50 +430,56 @@ window.addEventListener('DOMContentLoaded', function() {
     // Update the UI accordingly
     if (typeof updateCalculatorVisibility === 'function') updateCalculatorVisibility();
 });
-// "Raise Circling" note for summary – copy/paste ready!
-
 (function(){
-    // This runs after calculation and summary rendering. It checks your displayed summary for circling values
-    // and adds a red "Raise Circling" warning IF any procedure minima is higher than circling for any CAT.
-
     function checkAndAddRaiseCirclingNote() {
-        // Try to find summaryResults div
         var summaryDiv = document.getElementById('summaryResults');
         if (!summaryDiv) return;
 
-        // Read all summary result rows (must be visible on the page)
-        var text = summaryDiv.textContent || '';
-        var foundRaise = false;
-        // Search for pattern: if any approach for any CAT has value greater than circling
-        // Example: MDA: 520(400) means MDA 520 > Circling MDH 400 etc.
-
-        // Find Circling values by CAT
-        var circData = {};
-        var circLines = Array.from(summaryDiv.querySelectorAll('div'))
-            .filter(div => /Circling/.test(div.textContent));
-        circLines.forEach(line => {
-            // Example match: CAT A: MDA: 400, VIS: 1.5km
-            var m = line.textContent.match(/CAT\s([ABCD]):\s.*?MDA:\s*(\d+).*\bVIS:\s*([\d\.]+)/i);
-            if (m) circData[m[1]] = { mdh: parseInt(m[2]), vis: parseFloat(m[3]) };
+        // Extract circling values: CAT X: MDA: a (b), VIS: c
+        let circMDA = {}, circMDH = {}, circVIS = {};
+        (summaryDiv.innerHTML.match(/CAT ([ABCD]):.*?MDA: (\d+).*VIS: ([\d\.]+)/g)||[]).forEach(l=>{
+            let m = l.match(/CAT ([ABCD]):.*?MDA: (\d+).*VIS: ([\d\.]+)/);
+            if (!m) return;
+            var cat = m[1];
+            circMDA[cat] = parseInt(m[2]);
+            circVIS[cat] = parseFloat(m[3]);
+        });
+        // Also catch MDH (for lines like: ... MDH: 520 ...)
+        (summaryDiv.innerHTML.match(/CAT ([ABCD]):.*?MDH: (\d+)/g)||[]).forEach(l=>{
+            let m = l.match(/CAT ([ABCD]):.*?MDH: (\d+)/);
+            if (!m) return;
+            var cat = m[1];
+            circMDH[cat] = parseInt(m[2]);
         });
 
-        // Now search non-Circling result lines for exceeding values
-        var allLines = Array.from(summaryDiv.querySelectorAll('div'))
-            .filter(div => !/Circling/.test(div.textContent));
-        allLines.forEach(line => {
-            var m = line.textContent.match(/CAT\s([ABCD]):.*MDA:\s*(\d+).*VIS:\s*([\d\.]+)/i);
-            if (m) {
-                var cat = m[1];
-                var mda = parseInt(m[2]);
-                var vis = parseFloat(m[3]);
-                if (circData[cat]) {
-                    if (mda > circData[cat].mdh || vis > circData[cat].vis) foundRaise = true;
+        // Extract all procedure values (not 'Circling'), for each category, check for > circling
+        let raise = false;
+        // Find all procedure blocks (h3 headings)
+        summaryDiv.querySelectorAll('h3').forEach(function(h3){
+            if (/circling/i.test(h3.textContent)) return; // skip circling itself
+            // Find all result lines under this block
+            let el = h3.nextElementSibling;
+            while (el && el.tagName === 'DIV') {
+                let txt = el.textContent;
+                let catMatch = txt.match(/CAT ([ABCD]):/);
+                if (catMatch) {
+                    let cat = catMatch[1];
+                    // Try for each possible field
+                    let mda = txt.match(/MDA: (\d+)/), dh = txt.match(/DH: (\d+)/), mdh = txt.match(/MDH: (\d+)/), da = txt.match(/DA: (\d+)/), rvr = txt.match(/RVR: (\d+)/), vis = txt.match(/VIS: ([\d\.]+)/);
+                    // Compare
+                    if (mda && circMDA[cat]!==undefined && parseInt(mda[1]) > circMDA[cat]) raise = true;
+                    if (mdh && circMDH[cat]!==undefined && parseInt(mdh[1]) > circMDH[cat]) raise = true;
+                    if (dh && circMDH[cat]!==undefined && parseInt(dh[1]) > circMDH[cat]) raise = true;
+                    if (da && circMDA[cat]!==undefined && parseInt(da[1]) > circMDA[cat]) raise = true;
+                    if (rvr && circVIS[cat]!==undefined && parseFloat(rvr[1])/1000 > circVIS[cat]) raise = true; // RVR in meters, circling VIS in km
+                    if (vis && circVIS[cat]!==undefined && parseFloat(vis[1]) > circVIS[cat]) raise = true;
                 }
+                el = el.nextElementSibling;
             }
         });
 
-        // If needed, add the warning above results IF not already present
-        if (foundRaise && !summaryDiv.querySelector('.raise-circling-note')) {
+        // Display warning if needed
+        if (raise && !summaryDiv.querySelector('.raise-circling-note')) {
             var note = document.createElement('div');
             note.textContent = 'Raise Circling';
             note.className = 'raise-circling-note';
@@ -484,12 +490,15 @@ window.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Hook after page ready and after calculation
-    document.addEventListener('DOMContentLoaded', checkAndAddRaiseCirclingNote);
-
-    // If you have a calculate button (id="calculateAllBtn"), hook after calculation:
+    // Run after summary is rendered. You may need to adjust timing depending on your UI.
+    document.addEventListener('DOMContentLoaded', function(){
+        setTimeout(checkAndAddRaiseCirclingNote, 200);
+    });
     var calcBtn = document.getElementById('calculateAllBtn');
     if (calcBtn) calcBtn.addEventListener('click', function(){
-        setTimeout(checkAndAddRaiseCirclingNote, 150);
+        setTimeout(checkAndAddRaiseCirclingNote, 200);
+    });
+    document.getElementById('summaryResults').addEventListener('DOMSubtreeModified', function(){
+        setTimeout(checkAndAddRaiseCirclingNote, 100);
     });
 })();
