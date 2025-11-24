@@ -430,3 +430,69 @@ window.addEventListener('DOMContentLoaded', function() {
     // Update the UI accordingly
     if (typeof updateCalculatorVisibility === 'function') updateCalculatorVisibility();
 });
+// Paste this at the very end of your calculator.js file.
+// This code adds a red "Raise Circling" note to your summary if any checked procedure's minima is higher than circling for any CAT.
+// No other code in your file is affected!
+
+(function(){
+    // After your summary logic, call this:
+    function showRaiseCirclingNoteIfNeeded() {
+        // The code assumes your calculator already builds a 'results' object containing calculated values for each procedure and CAT
+        // and your summaryResults div shows the output.
+
+        // List all procedures and categories you use (adapt as needed):
+        var procedureCodes = [
+            'cat1', 'rnp', 'gls', 'par', 'lpv', 'lnavvnav',
+            'loc', 'locdme', 'vordme', 'lnav', 'sra', 'lda', 'vor', 'ndbdme', 'ndb'
+        ];
+        var circlingCode = 'circling';
+        var categories = ['A', 'B', 'C', 'D'];
+
+        // Try to get your results data (change this line if your structure uses something else)
+        var results = window.results || {}; // Sometimes your code stores it as window.results
+
+        var raiseNeeded = false;
+        procedureCodes.forEach(function(proc){
+            categories.forEach(function(cat){
+                var p = results[proc] && results[proc][cat] ? results[proc][cat] : {};
+                var c = results[circlingCode] && results[circlingCode][cat] ? results[circlingCode][cat] : {};
+
+                // Convert RVR to km for circling comparison (if not already)
+                var procRVRkm = p.rvr ? (parseFloat(p.rvr) / 1000) : 0;
+                var circVIS = c.vis ? parseFloat(c.vis) : 0;
+
+                // Check if any procedure value exceeds circling (change as needed for your fields)
+                if (
+                    (p.dh && c.mdh && p.dh > c.mdh) ||
+                    (p.mdh && c.mdh && p.mdh > c.mdh) ||
+                    (p.mda && c.mda && p.mda > c.mda) ||
+                    (p.da && c.mda && p.da > c.mda) ||
+                    (p.rvr && circVIS && procRVRkm > circVIS)
+                ) {
+                    raiseNeeded = true;
+                }
+            });
+        });
+
+        // If needed, add note
+        var summaryDiv = document.getElementById('summaryResults');
+        if (raiseNeeded && summaryDiv) {
+            var noteDiv = document.createElement('div');
+            noteDiv.style.color = 'red';
+            noteDiv.style.fontWeight = 'bold';
+            noteDiv.style.marginBottom = '10px';
+            noteDiv.textContent = 'Raise Circling';
+            summaryDiv.insertBefore(noteDiv, summaryDiv.firstChild);
+        }
+    }
+
+    // Run automatically after page load and after calculation
+    document.addEventListener('DOMContentLoaded', showRaiseCirclingNoteIfNeeded);
+    // Optional: If your "Calculate" button triggers calculation, you can also run:
+    var calcBtn = document.getElementById('calculateAllBtn');
+    if (calcBtn) calcBtn.addEventListener('click', function() {
+        // Timeout allows summary to render first
+        setTimeout(showRaiseCirclingNoteIfNeeded, 120);
+    });
+})();
+
