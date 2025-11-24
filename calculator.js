@@ -430,69 +430,66 @@ window.addEventListener('DOMContentLoaded', function() {
     // Update the UI accordingly
     if (typeof updateCalculatorVisibility === 'function') updateCalculatorVisibility();
 });
-// Paste this at the very end of your calculator.js file.
-// This code adds a red "Raise Circling" note to your summary if any checked procedure's minima is higher than circling for any CAT.
-// No other code in your file is affected!
+// "Raise Circling" note for summary – copy/paste ready!
 
 (function(){
-    // After your summary logic, call this:
-    function showRaiseCirclingNoteIfNeeded() {
-        // The code assumes your calculator already builds a 'results' object containing calculated values for each procedure and CAT
-        // and your summaryResults div shows the output.
+    // This runs after calculation and summary rendering. It checks your displayed summary for circling values
+    // and adds a red "Raise Circling" warning IF any procedure minima is higher than circling for any CAT.
 
-        // List all procedures and categories you use (adapt as needed):
-        var procedureCodes = [
-            'cat1', 'rnp', 'gls', 'par', 'lpv', 'lnavvnav',
-            'loc', 'locdme', 'vordme', 'lnav', 'sra', 'lda', 'vor', 'ndbdme', 'ndb'
-        ];
-        var circlingCode = 'circling';
-        var categories = ['A', 'B', 'C', 'D'];
+    function checkAndAddRaiseCirclingNote() {
+        // Try to find summaryResults div
+        var summaryDiv = document.getElementById('summaryResults');
+        if (!summaryDiv) return;
 
-        // Try to get your results data (change this line if your structure uses something else)
-        var results = window.results || {}; // Sometimes your code stores it as window.results
+        // Read all summary result rows (must be visible on the page)
+        var text = summaryDiv.textContent || '';
+        var foundRaise = false;
+        // Search for pattern: if any approach for any CAT has value greater than circling
+        // Example: MDA: 520(400) means MDA 520 > Circling MDH 400 etc.
 
-        var raiseNeeded = false;
-        procedureCodes.forEach(function(proc){
-            categories.forEach(function(cat){
-                var p = results[proc] && results[proc][cat] ? results[proc][cat] : {};
-                var c = results[circlingCode] && results[circlingCode][cat] ? results[circlingCode][cat] : {};
-
-                // Convert RVR to km for circling comparison (if not already)
-                var procRVRkm = p.rvr ? (parseFloat(p.rvr) / 1000) : 0;
-                var circVIS = c.vis ? parseFloat(c.vis) : 0;
-
-                // Check if any procedure value exceeds circling (change as needed for your fields)
-                if (
-                    (p.dh && c.mdh && p.dh > c.mdh) ||
-                    (p.mdh && c.mdh && p.mdh > c.mdh) ||
-                    (p.mda && c.mda && p.mda > c.mda) ||
-                    (p.da && c.mda && p.da > c.mda) ||
-                    (p.rvr && circVIS && procRVRkm > circVIS)
-                ) {
-                    raiseNeeded = true;
-                }
-            });
+        // Find Circling values by CAT
+        var circData = {};
+        var circLines = Array.from(summaryDiv.querySelectorAll('div'))
+            .filter(div => /Circling/.test(div.textContent));
+        circLines.forEach(line => {
+            // Example match: CAT A: MDA: 400, VIS: 1.5km
+            var m = line.textContent.match(/CAT\s([ABCD]):\s.*?MDA:\s*(\d+).*\bVIS:\s*([\d\.]+)/i);
+            if (m) circData[m[1]] = { mdh: parseInt(m[2]), vis: parseFloat(m[3]) };
         });
 
-        // If needed, add note
-        var summaryDiv = document.getElementById('summaryResults');
-        if (raiseNeeded && summaryDiv) {
-            var noteDiv = document.createElement('div');
-            noteDiv.style.color = 'red';
-            noteDiv.style.fontWeight = 'bold';
-            noteDiv.style.marginBottom = '10px';
-            noteDiv.textContent = 'Raise Circling';
-            summaryDiv.insertBefore(noteDiv, summaryDiv.firstChild);
+        // Now search non-Circling result lines for exceeding values
+        var allLines = Array.from(summaryDiv.querySelectorAll('div'))
+            .filter(div => !/Circling/.test(div.textContent));
+        allLines.forEach(line => {
+            var m = line.textContent.match(/CAT\s([ABCD]):.*MDA:\s*(\d+).*VIS:\s*([\d\.]+)/i);
+            if (m) {
+                var cat = m[1];
+                var mda = parseInt(m[2]);
+                var vis = parseFloat(m[3]);
+                if (circData[cat]) {
+                    if (mda > circData[cat].mdh || vis > circData[cat].vis) foundRaise = true;
+                }
+            }
+        });
+
+        // If needed, add the warning above results IF not already present
+        if (foundRaise && !summaryDiv.querySelector('.raise-circling-note')) {
+            var note = document.createElement('div');
+            note.textContent = 'Raise Circling';
+            note.className = 'raise-circling-note';
+            note.style.color = 'red';
+            note.style.fontWeight = 'bold';
+            note.style.marginBottom = '10px';
+            summaryDiv.insertBefore(note, summaryDiv.firstChild);
         }
     }
 
-    // Run automatically after page load and after calculation
-    document.addEventListener('DOMContentLoaded', showRaiseCirclingNoteIfNeeded);
-    // Optional: If your "Calculate" button triggers calculation, you can also run:
+    // Hook after page ready and after calculation
+    document.addEventListener('DOMContentLoaded', checkAndAddRaiseCirclingNote);
+
+    // If you have a calculate button (id="calculateAllBtn"), hook after calculation:
     var calcBtn = document.getElementById('calculateAllBtn');
-    if (calcBtn) calcBtn.addEventListener('click', function() {
-        // Timeout allows summary to render first
-        setTimeout(showRaiseCirclingNoteIfNeeded, 120);
+    if (calcBtn) calcBtn.addEventListener('click', function(){
+        setTimeout(checkAndAddRaiseCirclingNote, 150);
     });
 })();
-
